@@ -1,0 +1,82 @@
+{
+    "prompts": [
+      {
+        "id": 0,
+        "name": "Decision Mapping",
+        "description": "Use this to map and compare distinct architectural or algorithmic approaches to a problem, focusing on core mechanisms, trade-offs, and failure modes rather than minor variations.",
+        "prompt": "Act as a Senior Technical Analyst. I need to map the solution landscape for the following task: [RAW_REQUEST].\nIdentify and analyze fundamentally different approaches (architectural, algorithmic, or organizational). Do not list minor variations; focus on distinct paradigms.\nFor each approach, provide:\n* **Core Concept:** The underlying mechanism.\n* **Typical Stack:** Standard tools/technologies.\n* **Key Trade-offs:** The specific cost-benefit analysis.\n* **Failure Modes:** The specific scenarios where this approach typically fails or hits a hard limit."
+      },
+      {
+        "id": 1,
+        "name": "Concept to Spec Translation",
+        "description": "Use this to formalize an abstract concept into concrete engineering primitives (inputs, transformations, interfaces, state) without focusing on specific technology stacks.",
+        "prompt": "Act as a Systems Architect. I will provide an abstract concept: [RAW_REQUEST].\nFormalize this concept into concrete engineering primitives. Do not attempt to optimize, critique, or select a \"best\" technology stack.\nYour sole task is structural decomposition of the current logic.\nDefine the following:\n* **Inputs & Signals:** Data entry points and triggers.\n* **Core Transformations:** The algorithmic logic or data mutations applied.\n* **Interfaces:** Boundaries and interaction contracts between components.\n* **Functional Modules:** Logical units of responsibility.\n* **Data State:** What data must be persisted versus what is transient."
+      },
+      {
+        "id": 2,
+        "name": "Devil's Advocate (System Pre-Mortem)",
+        "description": "Use this to conduct a ruthless pre-mortem analysis, identifying critical failure vectors across data, logic, scale, and security before a system is built.",
+        "prompt": "Act as a hostile Senior Site Reliability Engineer (SRE) conducting a ruthless pre-mortem.\nYour goal is to identify how the system described below will inevitably fail.\nSystem Description: [RAW_REQUEST]\nList critical failure vectors across the following dimensions:\n* **Data & Input:** (e.g., drift, poisoning, sparsity, format changes)\n* **Model & Logic:** (e.g., edge cases, silent failures, non-determinism, hallucinations)\n* **Integrations:** (e.g., latency spikes, API contract violations, cascading failures)\n* **Scale:** (e.g., concurrency limits, resource exhaustion, bottlenecks)\n* **Compliance/Security:** (e.g., regulatory breaches, side-channel attacks)\n\n**Constraint:** Provide ONLY the failure scenarios.\nDo NOT offer solutions or mitigations."
+      },
+      {
+        "id": 3,
+        "name": "Constraint Origin Analysis (Legacy vs. Fundamental)",
+        "description": "Use this to categorize system limitations into solvable 'artificial' constraints (legacy/technical debt) versus immutable 'fundamental' hard limits (physics/math).",
+        "prompt": "Act as a First-Principles Thinker and Systems Analyst.\nAnalyze the limitations and bottlenecks of [RAW_REQUEST]. Rigorously categorize each limitation into one of two distinct buckets:\n1. **Artificial & Legacy Constraints (\"The Crutches\"):**\nLimitations resulting from path dependence, technical debt, organizational politics, outdated regulations, or \"it was always done this way\" logic.\nThese are solvable or removable with sufficient will/resources.\n2. **Fundamental Hard Limits:**\nLimitations imposed by the laws of physics (e.g., speed of light, heat dissipation), information theory (e.g., CAP theorem), mathematical provability, or hard unit economics.\nThese are immutable realities.\n**Output Requirement:**\nList the specific constraints.\nFor each, classify it and briefly explain *why* it belongs in that category.\nExplicitly identify which \"Artificial Constraints\" are often mistaken for \"Fundamental\" ones."
+      },
+      {
+        "id": 4,
+        "name": "Cross-Domain Isomorphism Generator",
+        "description": "Use this to break cognitive inertia by reframing a problem through analogies from biology, physics, distributed systems, and economics to find novel architectural solutions.",
+        "prompt": "Act as an Interdisciplinary Systems Theorist.\nI need to break cognitive inertia regarding [RAW_REQUEST].\nReframe this problem by applying governing principles and mental models from the following distinct domains:\n1. **Biological Systems** (e.g., evolution, homeostasis, redundancy, swarm intelligence).\n2. **Physics & Engineering** (e.g., thermodynamics, feedback loops, stress propagation).\n3. **Distributed Systems** (e.g., consensus protocols, eventual consistency, fault tolerance).\n4. **Economics & Game Theory** (e.g., incentive structures, resource allocation, market equilibrium).\n\nFor each domain:\n* **Identify the Mechanism:** What specific principle governs success in that field?\n* **Apply the Analogy:** Map that mechanism concretely to the current problem.\n* **Proposed Solution:** What architectural or process change does this perspective dictate?"
+      },
+      {
+        "id": 5,
+        "name": "System Axiom Audit (Shadow Spec Reveal)",
+        "description": "Use this to reverse-engineer unwritten rules and implicit assumptions in a system, identifying fragile dependencies that aren't explicitly stated in documentation.",
+        "prompt": "Act as a Systems Auditor and Logic Analyst.\nI am providing a description of a system that has evolved organically: [RAW_REQUEST].\nYour goal is to reverse-engineer the \"Shadow Specification\"—the unwritten rules and dependencies.\n1. **Codified Rules:** List the logic explicitly stated in the text.\n2. **Implicit Assumptions:** Deduce the unstated pre-conditions required for this system to function (e.g., specific user behaviors, data homogeneity, constant uptime, API immutability).\nWhat are we assuming is \"true\" that isn't guaranteed?\n3. **Fragility Analysis:** Identify the single riskiest implicit assumption.\nExplain why its failure would be catastrophic."
+      },
+      {
+        "id": 6,
+        "name": "Analytical Deconstruction (Pure Analysis)",
+        "description": "Use this for a clinical, objective breakdown of a raw concept into its core components, dependencies, and gaps without proposing solutions or optimizations.",
+        "prompt": "Act as an Analytical Deconstructor.\nYou are NOT a consultant, product manager, or solution designer.\nI will provide a raw, fragmentary concept: [RAW_REQUEST].\n**Strict Constraints:**\n* DO NOT propose solutions, optimizations, or features.\n* DO NOT suggest specific technology stacks.\n* DO NOT use phrases like \"You could...\" or \"It might be better if...\"\n* Maintain a clinical, dry, and objective tone.\n\n**Required Analysis:**\n1. **Core Extraction:** Isolate the absolute center of intent/utility (max 2 sentences).\n2. **Primitive Decomposition:** Break the concept into:\n* *Data Objects* (Entities)\n* *Transformations* (State changes)\n* *Dependencies* (External requirements)\n* *Environment* (Context)\n\n3. **Existing Patterns:** Identify abstract *categories* of existing solutions that address parts of this problem (do not name specific products).\n4. **Gap & Conflict Analysis:** List undefined variables and internal logical contradictions within the description.\n5. **Implicit Dependencies:** What external factors or user behaviors is the idea critically relying on without stating it?\n6. **Fundamental Limits:** Identify hard constraints (Laws of Physics, Information Theory, Unit Economics, or System limits) that apply to this domain."
+      },
+      {
+        "id": 7,
+        "name": "Negative Space Analysis (Novelty Reality Check)",
+        "description": "Use this to identify what standard mechanisms or safeguards are *missing* from an idea, highlighting gaps that might be masked as \"simplicity\".",
+        "prompt": "Act as a Structural Analyst focusing on \"Negative Space.\"\nAnalyze the following idea: [RAW_REQUEST].\nInstead of analyzing what the idea *does*, analyze what it *omits* compared to standard paradigms in this domain.\n1. **Absent Expectations:** What processes, data flows, user interactions, or safeguards would normally occur in a system like this, but are missing here?\n2. **Missing Mechanisms:** Which standard architectural components are absent?\n3. **Compensation Analysis:** Is the absence of these elements explicitly handled (compensated for), or are they unaddressed gaps masking as \"simplicity\"?\n\n**Constraint:** Do not propose features or solutions. Focus solely on identifying the \"missing\" elements."
+      },
+      {
+        "id": 8,
+        "name": "System Invariant Analysis",
+        "description": "Use this to identify the non-negotiable domain and structural truths that must remain valid across any system state to prevent collapse.",
+        "prompt": "Act as a Formal Logic Analyst and Systems Architect.\nAnalyze the following system/problem: [RAW_REQUEST].\nIdentify the **System Invariants**—the specific properties or conditions that must remain true across any valid state of the system, regardless of implementation details or refactoring.\nList these in two specific categories:\n1. **Domain Invariants:** Truths defined by the business logic or physical reality (e.g., \"Total debits must equal total credits\").\n2. **Structural Invariants:** Truths required for the system to remain coherent (e.g., \"A specific ID must be unique across all shards\").\n\n**Constraint:** Identify ONLY the invariants. If an invariant is violated, the system collapses.\nDo not provide advice, solutions, or \"nice-to-haves.\" Provide a strict list."
+      },
+      {
+        "id": 9,
+        "name": "Complexity Audit (Essential vs. Accidental)",
+        "description": "Use this to distinguish between essential complexity (inherent to the problem) and accidental complexity (implementation waste), identifying low-utility components.",
+        "prompt": "Act as a Complexity Auditor and Systems Architect.\nAnalyze the following system: [RAW_REQUEST].\nYour task is to distinguish between *Essential Complexity* (inherent to the problem) and *Accidental Complexity* (introduced by the implementation).\nIdentify the following:\n1. **Vanity & low-Utility Components:** Parts of the pipeline (features, model parameters, or process steps) that add complexity but yield statistically insignificant marginal value.\n2. **Compensatory Logic:** Components that exist *solely* to mitigate, patch, or translate the shortcomings of other design decisions (structural \"band-aids\").\n\n**Constraint:** Provide a ruthless diagnosis of waste. Do NOT propose refactoring, simplification strategies, or solutions."
+      },
+      {
+        "id": 10,
+        "name": "Implicit Assumption Audit",
+        "description": "Use this to list the unstated 'happy path' dependencies regarding data, behavior, environment, and resources that a system relies on to function correctly.",
+        "prompt": "Act as a Forensic Systems Analyst.\nAnalyze [RAW_REQUEST] to uncover its \"Happy Path\" dependencies.\nList the implicit, unstated assumptions the system relies on to function correctly.\nCategorize these assumptions under:\n1. **Data Reality:** Assumptions about data format, cleanliness, latency, sparsity, or statistical stationarity.\n2. **Behavioral Logic:** Assumptions about user rationality, benevolent intent, market predictability, or workflow adherence.\n3. **Environmental Stability:** Assumptions about network reliability, third-party API consistency, or platform uptime.\n4. **Resource Access:** Assumptions about compute availability, bandwidth, latency budgets, or funding continuity.\n\n**Constraint:** Provide a raw list of assumptions only. Do not evaluate their validity, probability, or risk level."
+      },
+      {
+        "id": 11,
+        "name": "The Delusion Audit (Identifying the Single Point of Failure)",
+        "description": "Use this to identify the single most probable point of failure or confirmation bias in an idea that appears perfect or \"too good to be true\".",
+        "prompt": "Act as a Cognitive Bias Analyst and Logic Auditor.\nI am presenting an idea that feels \"too good to be true\": [RAW_REQUEST].\nAssume that I am fundamentally mistaken. Your task is to pinpoint the exact location of that mistake.\nIdentify the **Single Point of Failure** in my reasoning—the specific assumption, data interpretation, or causal link where I am most likely suffering from confirmation bias or wishful thinking.\nExplain *why* this specific point is the most probable candidate for failure.\n**Constraint:** Do not be polite.\nDo not offer alternatives, mitigations, or \"better ways.\" Focus 100% on identifying the error."
+      },
+      {
+        "id": 12,
+        "name": "Black Box Analysis (System Identification)",
+        "description": "Use this to analyze an opaque system solely based on theoretical inputs and outputs to determine variable sensitivity and result signatures.",
+        "prompt": "Act as a Black Box Analyst.\nTreat [RAW_REQUEST] strictly as an opaque entity.\nYou have zero knowledge of its internal architecture, code, or logic.\nAnalyze the system solely based on theoretical Input/Output correlations:\n1. **Input Sensitivity:** Which specific input variables (or combinations) exercise the highest leverage over the output variance?\nWhere is the system most sensitive to change?\n2. **Output Signatures:** What recurring patterns, manifolds, or statistical anomalies are likely to emerge in the results?\n\n**Constraint:** Base your analysis *only* on observable behavior.\nDo not speculate on internal mechanisms (e.g., \"it uses a neural net\" or \"it relies on SQL\")."
+      }
+    ]
+  }

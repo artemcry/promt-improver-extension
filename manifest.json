@@ -1,8 +1,15 @@
 {
     "manifest_version": 3,
     "name": "Prompt Switcher Connect",
-    "version": "1.0",
-    "permissions": ["activeTab", "scripting"],
+    "version": "2.0",
+    "permissions": ["activeTab", "scripting", "storage"],
+    "host_permissions": [
+      "https://api.openai.com/*"
+    ],
+    "background": {
+      "service_worker": "background.js",
+      "type": "module"
+    },
     "content_scripts": [
       {
         "matches": [
@@ -11,6 +18,13 @@
         "https://claude.ai/*" 
       ],
         "js": ["content.js"]
+      }
+    ],
+    "options_page": "options.html",
+    "web_accessible_resources": [
+      {
+        "resources": ["js-lib/default_prompts.json"],
+        "matches": ["<all_urls>"]
       }
     ]
   }
