@@ -1,0 +1,3 @@
+fastapi
+uvicorn
+-e D:\LocalLibs\prompt_switcher
