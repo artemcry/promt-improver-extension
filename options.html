@@ -6,11 +6,38 @@
     <title>Prompt Switcher - Settings</title>
     <link rel="stylesheet" href="options.css">
 </head>
-<body>
+<body class="dark-theme">
     <div class="container">
+        <div class="unsaved-changes-banner" id="unsavedChangesBanner" style="display: none;">
+            <span class="unsaved-icon">⚠️</span>
+            <span class="unsaved-text">You have unsaved changes</span>
+            <button id="verifyAndSaveBtn" class="primary" style="margin-left: auto;">💾 Save All Configuration</button>
+        </div>
+        
+        <div class="validation-errors" id="validationErrors" style="display: none;">
+            <div class="validation-errors-header">
+                <span class="validation-icon">❌</span>
+                <span class="validation-title">Validation Errors:</span>
+            </div>
+            <ul class="validation-errors-list" id="validationErrorsList"></ul>
+        </div>
+        
         <div class="header">
-            <h1>⚡ Prompt Switcher</h1>
-            <p class="subtitle">Configure your AI prompt optimization settings</p>
+            <div class="header-top">
+                <div>
+                    <h1>⚡ Prompt Switcher</h1>
+                    <p class="subtitle">Configure your AI prompt optimization settings</p>
+                </div>
+                <div class="theme-toggle-container">
+                    <label class="theme-toggle">
+                        <input type="checkbox" id="themeToggle" checked>
+                        <span class="theme-toggle-slider">
+                            <span class="theme-icon">🌙</span>
+                            <span class="theme-icon">☀️</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
             <div class="status-indicator" id="statusIndicator">
                 <span class="dot" id="statusDot"></span>
                 <span id="statusText">Checking configuration...</span>
@@ -33,10 +60,6 @@
                 <label for="model">Model</label>
                 <input type="text" id="model" placeholder="gpt-4o" value="gpt-4o">
                 <div class="help-text">OpenAI model name (e.g., gpt-4o, gpt-4, gpt-3.5-turbo)</div>
-            </div>
-            
-            <div class="button-group">
-                <button id="verifyAndSaveBtn" class="primary">✓ Verify & Save Configuration</button>
             </div>
             
             <div id="configStatus" class="status"></div>

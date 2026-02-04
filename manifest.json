@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Prompt Switcher Connect",
+    "name": "Prompt Switcher",
     "version": "2.0",
     "permissions": ["activeTab", "scripting", "storage"],
     "host_permissions": [
@@ -10,12 +10,21 @@
       "service_worker": "background.js",
       "type": "module"
     },
+    "action": {
+    "default_icon": { "16": "images/icon-16.png" }
+    },
+    "icons": {
+      "16": "images/icon-16.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
+    },
     "content_scripts": [
       {
         "matches": [
         "https://chatgpt.com/*", 
         "https://gemini.google.com/*",
-        "https://claude.ai/*" 
+        "https://claude.ai/*",
+        "https://chat.deepseek.com/*"
       ],
         "js": ["content.js"]
       }
@@ -23,8 +32,19 @@
     "options_page": "options.html",
     "web_accessible_resources": [
       {
-        "resources": ["js-lib/default_prompts.json"],
-        "matches": ["<all_urls>"]
+        "resources": [
+          "js-lib/default_prompts.json",
+          "main.js",
+          "styles.js",
+          "ui.js",
+          "adapters/*.js"
+        ],
+        "matches": [
+          "https://chatgpt.com/*",
+          "https://gemini.google.com/*",
+          "https://claude.ai/*",
+          "https://chat.deepseek.com/*"
+        ]
       }
     ]
   }

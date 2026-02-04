@@ -19,11 +19,19 @@ const statusText = document.getElementById('statusText');
 const configStatus = document.getElementById('configStatus');
 const promptsStatus = document.getElementById('promptsStatus');
 const saveStatus = document.getElementById('saveStatus');
+const unsavedChangesBanner = document.getElementById('unsavedChangesBanner');
+const validationErrors = document.getElementById('validationErrors');
+const validationErrorsList = document.getElementById('validationErrorsList');
+const themeToggle = document.getElementById('themeToggle');
 
 // State
 let nextPromptId = 0;
 let prompts = [];
 let isConfigured = false;
+let hasUnsavedChanges = false;
+let savedApiKey = '';
+let savedModel = '';
+let savedPrompts = [];
 
 /**
  * Show status message
@@ -50,6 +58,53 @@ function updateStatusIndicator() {
 }
 
 /**
+ * Check if there are unsaved changes
+ */
+function checkForUnsavedChanges() {
+    const currentApiKey = apiKeyInput.value.trim();
+    const currentModel = modelInput.value.trim();
+    
+    // Sync prompts from table before comparing
+    syncPromptsFromTable();
+    
+    // Compare API key
+    if (currentApiKey !== savedApiKey) {
+        hasUnsavedChanges = true;
+        updateUnsavedChangesBanner();
+        return;
+    }
+    
+    // Compare model
+    if (currentModel !== savedModel) {
+        hasUnsavedChanges = true;
+        updateUnsavedChangesBanner();
+        return;
+    }
+    
+    // Compare prompts (deep comparison)
+    if (JSON.stringify(prompts) !== JSON.stringify(savedPrompts)) {
+        hasUnsavedChanges = true;
+        updateUnsavedChangesBanner();
+        return;
+    }
+    
+    // No changes
+    hasUnsavedChanges = false;
+    updateUnsavedChangesBanner();
+}
+
+/**
+ * Update unsaved changes banner visibility
+ */
+function updateUnsavedChangesBanner() {
+    if (hasUnsavedChanges) {
+        unsavedChangesBanner.style.display = 'flex';
+    } else {
+        unsavedChangesBanner.style.display = 'none';
+    }
+}
+
+/**
  * Load configuration from storage
  */
 async function loadConfig() {
@@ -60,10 +115,12 @@ async function loadConfig() {
             
             if (config.apiKey) {
                 apiKeyInput.value = config.apiKey;
+                savedApiKey = config.apiKey;
             }
             
             if (config.model) {
                 modelInput.value = config.model;
+                savedModel = config.model;
             }
             
             // Check if configuration is complete
@@ -72,13 +129,19 @@ async function loadConfig() {
             
             if (config.prompts && config.prompts.length > 0) {
                 prompts = config.prompts;
+                savedPrompts = JSON.parse(JSON.stringify(prompts)); // Deep copy
                 // Find max ID to set nextPromptId
                 nextPromptId = Math.max(...prompts.map(p => p.id || 0), -1) + 1;
                 renderPromptsTable();
             } else {
                 // Load defaults if no prompts
                 await loadDefaultPrompts();
+                savedPrompts = JSON.parse(JSON.stringify(prompts)); // Deep copy
             }
+            
+            // Reset unsaved changes flag after loading
+            hasUnsavedChanges = false;
+            updateUnsavedChangesBanner();
         }
     } catch (error) {
         console.error('Error loading config:', error);
@@ -157,15 +220,18 @@ function createPromptRow(prompt, index) {
     nameInput.addEventListener('input', (e) => {
         prompts[index].name = e.target.value;
         updateValidationBadge(row);
+        checkForUnsavedChanges();
     });
     
     descInput.addEventListener('input', (e) => {
         prompts[index].description = e.target.value;
+        checkForUnsavedChanges();
     });
     
     instructionTextarea.addEventListener('input', (e) => {
         prompts[index].prompt = e.target.value;
         updateValidationBadge(row);
+        checkForUnsavedChanges();
     });
     
     deleteBtn.addEventListener('click', () => {
@@ -203,6 +269,7 @@ function addPrompt() {
     
     prompts.push(newPrompt);
     renderPromptsTable();
+    checkForUnsavedChanges();
     
     // Focus on the name input of the new row
     const rows = promptsTableBody.querySelectorAll('tr:not(.empty-state-row)');
@@ -222,6 +289,7 @@ function deletePrompt(index) {
     if (confirm('Are you sure you want to delete this prompt?')) {
         prompts.splice(index, 1);
         renderPromptsTable();
+        checkForUnsavedChanges();
     }
 }
 
@@ -240,6 +308,7 @@ async function loadDefaultPrompts() {
         nextPromptId = Math.max(...prompts.map(p => p.id || 0), -1) + 1;
         renderPromptsTable();
         showStatus(promptsStatus, `Loaded ${prompts.length} default prompt(s)`, 'success');
+        checkForUnsavedChanges();
     } catch (error) {
         console.error('Error loading defaults:', error);
         showStatus(promptsStatus, 'Error loading default prompts', 'error');
@@ -250,8 +319,11 @@ async function loadDefaultPrompts() {
  * Validate prompts before saving
  */
 function validatePrompts() {
+    const errors = [];
+    
     if (prompts.length === 0) {
-        return { valid: false, error: 'At least one prompt is required' };
+        errors.push('At least one prompt is required');
+        return { valid: false, errors: errors };
     }
     
     const seenIds = new Set();
@@ -261,57 +333,108 @@ function validatePrompts() {
         const index = i + 1;
         
         if (!prompt.name || !prompt.name.trim()) {
-            return { valid: false, error: `Prompt #${index} is missing a name` };
+            errors.push(`Prompt #${index} is missing a name`);
         }
         
         if (!prompt.description || !prompt.description.trim()) {
-            return { valid: false, error: `Prompt "${prompt.name}" is missing a description` };
+            errors.push(`Prompt "${prompt.name || '#' + index}" is missing a description`);
         }
         
         if (!prompt.prompt || !prompt.prompt.trim()) {
-            return { valid: false, error: `Prompt "${prompt.name}" is missing an instruction` };
+            errors.push(`Prompt "${prompt.name || '#' + index}" is missing an instruction`);
         }
         
-        if (!prompt.prompt.includes('[RAW_REQUEST]')) {
-            return { valid: false, error: `Prompt "${prompt.name}" is missing [RAW_REQUEST] placeholder` };
+        if (prompt.prompt && !prompt.prompt.includes('[RAW_REQUEST]')) {
+            errors.push(`Prompt "${prompt.name || '#' + index}" is missing [RAW_REQUEST] placeholder`);
         }
         
         if (seenIds.has(prompt.id)) {
-            return { valid: false, error: `Duplicate prompt ID: ${prompt.id}` };
+            errors.push(`Duplicate prompt ID: ${prompt.id}`);
         }
         seenIds.add(prompt.id);
     }
     
-    return { valid: true };
+    return { valid: errors.length === 0, errors: errors };
 }
 
 /**
- * Verify & Save Configuration (Atomic Operation)
- * This is the main workflow: validate API Key + Model, then save both together
+ * Validate all configuration (API key, model, prompts)
+ */
+function validateAllConfig() {
+    const errors = [];
+    const apiKey = apiKeyInput.value.trim();
+    const model = modelInput.value.trim();
+    
+    // Validate API key
+    if (!apiKey) {
+        errors.push('API key is required');
+    } else if (!apiKey.startsWith('sk-')) {
+        errors.push('API key should start with "sk-"');
+    }
+    
+    // Validate model
+    if (!model) {
+        errors.push('Model name is required');
+    }
+    
+    // Validate prompts
+    syncPromptsFromTable();
+    const promptsValidation = validatePrompts();
+    if (!promptsValidation.valid) {
+        errors.push(...promptsValidation.errors);
+    }
+    
+    return { valid: errors.length === 0, errors: errors };
+}
+
+/**
+ * Show validation errors in the error banner
+ */
+function showValidationErrors(errors) {
+    if (errors && errors.length > 0) {
+        validationErrorsList.innerHTML = '';
+        errors.forEach(error => {
+            const li = document.createElement('li');
+            li.textContent = error;
+            validationErrorsList.appendChild(li);
+        });
+        validationErrors.style.display = 'block';
+    } else {
+        validationErrors.style.display = 'none';
+    }
+}
+
+/**
+ * Clear validation errors
+ */
+function clearValidationErrors() {
+    validationErrors.style.display = 'none';
+    validationErrorsList.innerHTML = '';
+}
+
+/**
+ * Save All Configuration - saves API key, model, and prompts with validation
  */
 async function verifyAndSave() {
+    // Clear previous validation errors
+    clearValidationErrors();
+    
+    // Sync prompts from table before saving
+    syncPromptsFromTable();
+    
     const apiKey = apiKeyInput.value.trim();
     const model = modelInput.value.trim() || "gpt-4o";
     
-    // Basic validation
-    if (!apiKey) {
-        showStatus(configStatus, 'Please enter an API key', 'error');
-        return;
-    }
-    
-    if (!apiKey.startsWith('sk-')) {
-        showStatus(configStatus, 'API key should start with "sk-"', 'error');
-        return;
-    }
-    
-    if (!model) {
-        showStatus(configStatus, 'Please enter a model name', 'error');
+    // Validate all configuration
+    const validation = validateAllConfig();
+    if (!validation.valid) {
+        showValidationErrors(validation.errors);
         return;
     }
     
     // Set loading state
     verifyAndSaveBtn.disabled = true;
-    verifyAndSaveBtn.innerHTML = '<span class="spinner"></span> Verifying connection...';
+    verifyAndSaveBtn.innerHTML = '<span class="spinner"></span> Verifying & Saving...';
     showStatus(configStatus, 'Verifying connection to OpenAI API...', 'info');
     
     try {
@@ -325,49 +448,46 @@ async function verifyAndSave() {
         if (!validateResponse || !validateResponse.success) {
             // Validation failed - DO NOT SAVE
             verifyAndSaveBtn.disabled = false;
-            verifyAndSaveBtn.innerHTML = '✓ Verify & Save Configuration';
+            verifyAndSaveBtn.innerHTML = '💾 Save All Configuration';
             showStatus(configStatus, validateResponse?.error || 'Model validation failed', 'error');
             return;
         }
         
-        // Step 2: Validation succeeded - Get current prompts to preserve them
-        const currentConfigResponse = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
-        const currentPrompts = currentConfigResponse?.data?.prompts || prompts;
-        
-        // Save configuration (preserve existing prompts if we don't have any in UI)
-        const promptsToSave = prompts.length > 0 ? prompts : currentPrompts;
-        
+        // Step 2: Validation succeeded - Save everything
         const saveResponse = await chrome.runtime.sendMessage({
             action: 'SAVE_CONFIG',
             apiKey: apiKey,
-            prompts: promptsToSave || [],
+            prompts: prompts,
             model: model
         });
         
         if (saveResponse && saveResponse.success) {
-            // Success - update UI
-            // Reload config to get updated state
-            const updatedConfig = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
-            if (updatedConfig?.success) {
-                prompts = updatedConfig.data.prompts || prompts;
-                if (prompts.length > 0) {
-                    renderPromptsTable();
-                }
-                isConfigured = !!(updatedConfig.data.apiKey && updatedConfig.data.model && updatedConfig.data.prompts?.length > 0);
-            } else {
-                isConfigured = true; // At least API key and model are saved
-            }
+            // Update saved state
+            savedApiKey = apiKey;
+            savedModel = model;
+            savedPrompts = JSON.parse(JSON.stringify(prompts)); // Deep copy
+            hasUnsavedChanges = false;
+            updateUnsavedChangesBanner();
+            
+            // Clear validation errors
+            clearValidationErrors();
+            
+            // Update UI
+            isConfigured = !!(apiKey && model && prompts.length > 0);
             updateStatusIndicator();
-            showStatus(configStatus, `✓ Configuration saved successfully! Model '${model}' is verified and ready.`, 'success');
+            showStatus(configStatus, `✓ All configuration saved successfully! Model '${model}' is verified and ready.`, 'success');
         } else {
-            showStatus(configStatus, saveResponse?.error || 'Failed to save configuration', 'error');
+            const errorMsg = saveResponse?.error || 'Failed to save configuration';
+            showValidationErrors([errorMsg]);
+            showStatus(configStatus, errorMsg, 'error');
         }
     } catch (error) {
         console.error('Error in verify & save:', error);
+        showValidationErrors(['Error: ' + error.message]);
         showStatus(configStatus, 'Error: ' + error.message, 'error');
     } finally {
         verifyAndSaveBtn.disabled = false;
-        verifyAndSaveBtn.innerHTML = '✓ Verify & Save Configuration';
+        verifyAndSaveBtn.innerHTML = '💾 Save All Configuration';
     }
 }
 
@@ -397,6 +517,10 @@ async function savePrompts() {
         });
         
         if (response && response.success) {
+            // Update saved state
+            savedPrompts = JSON.parse(JSON.stringify(prompts)); // Deep copy
+            checkForUnsavedChanges(); // This will update the banner
+            
             showStatus(promptsStatus, `Saved ${prompts.length} prompt(s) successfully!`, 'success');
             isConfigured = !!(currentConfig.apiKey && currentConfig.model && prompts.length > 0);
             updateStatusIndicator();
@@ -449,6 +573,13 @@ async function clearConfig() {
             model: 'gpt-4o'
         });
         
+        // Update saved state
+        savedApiKey = '';
+        savedModel = 'gpt-4o';
+        savedPrompts = [];
+        hasUnsavedChanges = false;
+        updateUnsavedChangesBanner();
+        
         isConfigured = false;
         updateStatusIndicator();
         showStatus(saveStatus, 'Configuration cleared', 'info');
@@ -467,12 +598,57 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/**
+ * Initialize theme
+ */
+function initTheme() {
+    // Load theme from localStorage, default to dark
+    const savedTheme = localStorage.getItem('optionsTheme') || 'dark';
+    const isDark = savedTheme === 'dark';
+    
+    themeToggle.checked = isDark;
+    if (isDark) {
+        document.body.classList.add('dark-theme');
+    } else {
+        document.body.classList.remove('dark-theme');
+    }
+}
+
+/**
+ * Toggle theme
+ */
+function toggleTheme() {
+    const isDark = themeToggle.checked;
+    
+    if (isDark) {
+        document.body.classList.add('dark-theme');
+        localStorage.setItem('optionsTheme', 'dark');
+    } else {
+        document.body.classList.remove('dark-theme');
+        localStorage.setItem('optionsTheme', 'light');
+    }
+}
+
 // Event Listeners
 verifyAndSaveBtn.addEventListener('click', verifyAndSave);
 addPromptBtn.addEventListener('click', addPrompt);
-loadDefaultsBtn.addEventListener('click', loadDefaultPrompts);
-savePromptsBtn.addEventListener('click', savePrompts);
+loadDefaultsBtn.addEventListener('click', () => {
+    loadDefaultPrompts();
+    checkForUnsavedChanges();
+});
+savePromptsBtn.addEventListener('click', () => {
+    savePrompts();
+    checkForUnsavedChanges();
+});
 clearBtn.addEventListener('click', clearConfig);
+themeToggle.addEventListener('change', toggleTheme);
+
+// Track changes in API key and model inputs
+apiKeyInput.addEventListener('input', checkForUnsavedChanges);
+modelInput.addEventListener('input', checkForUnsavedChanges);
+
+// Initialize theme on page load
+initTheme();
 
 // Load configuration on page load
 loadConfig();
