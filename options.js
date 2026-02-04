@@ -1,20 +1,29 @@
 /**
  * Options Page Script for Prompt Switcher Extension
+ * Modern SaaS-style UI with Verify & Save workflow
  */
 
 // DOM Elements
 const apiKeyInput = document.getElementById('apiKey');
-const promptsJsonTextarea = document.getElementById('promptsJson');
-const fileInput = document.getElementById('fileInput');
-const loadDefaultsBtn = document.getElementById('loadDefaults');
-const validateJsonBtn = document.getElementById('validateJson');
-const saveBtn = document.getElementById('saveBtn');
+const modelInput = document.getElementById('model');
+const verifyAndSaveBtn = document.getElementById('verifyAndSaveBtn');
+const addPromptBtn = document.getElementById('addPromptBtn');
+const loadDefaultsBtn = document.getElementById('loadDefaultsBtn');
+const savePromptsBtn = document.getElementById('savePromptsBtn');
 const clearBtn = document.getElementById('clearBtn');
 
-const apiKeyStatus = document.getElementById('apiKeyStatus');
+const promptsTableBody = document.getElementById('promptsTableBody');
+const statusIndicator = document.getElementById('statusIndicator');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const configStatus = document.getElementById('configStatus');
 const promptsStatus = document.getElementById('promptsStatus');
 const saveStatus = document.getElementById('saveStatus');
-const promptsInfo = document.getElementById('promptsInfo');
+
+// State
+let nextPromptId = 0;
+let prompts = [];
+let isConfigured = false;
 
 /**
  * Show status message
@@ -25,6 +34,19 @@ function showStatus(element, message, type = 'info') {
     setTimeout(() => {
         element.className = 'status';
     }, 5000);
+}
+
+/**
+ * Update status indicator
+ */
+function updateStatusIndicator() {
+    if (isConfigured) {
+        statusDot.className = 'dot ready';
+        statusText.textContent = 'Configuration ready';
+    } else {
+        statusDot.className = 'dot error';
+        statusText.textContent = 'Configuration incomplete';
+    }
 }
 
 /**
@@ -40,78 +62,166 @@ async function loadConfig() {
                 apiKeyInput.value = config.apiKey;
             }
             
+            if (config.model) {
+                modelInput.value = config.model;
+            }
+            
+            // Check if configuration is complete
+            isConfigured = !!(config.apiKey && config.model && config.prompts && config.prompts.length > 0);
+            updateStatusIndicator();
+            
             if (config.prompts && config.prompts.length > 0) {
-                promptsJsonTextarea.value = JSON.stringify({ prompts: config.prompts }, null, 2);
-                updatePromptsInfo(config.prompts.length);
+                prompts = config.prompts;
+                // Find max ID to set nextPromptId
+                nextPromptId = Math.max(...prompts.map(p => p.id || 0), -1) + 1;
+                renderPromptsTable();
+            } else {
+                // Load defaults if no prompts
+                await loadDefaultPrompts();
             }
         }
     } catch (error) {
         console.error('Error loading config:', error);
-        showStatus(apiKeyStatus, 'Error loading configuration', 'error');
+        showStatus(configStatus, 'Error loading configuration', 'error');
+        isConfigured = false;
+        updateStatusIndicator();
     }
 }
 
 /**
- * Update prompts info display
+ * Render prompts table
  */
-function updatePromptsInfo(count) {
-    promptsInfo.textContent = `Loaded ${count} prompt${count !== 1 ? 's' : ''}`;
+function renderPromptsTable() {
+    promptsTableBody.innerHTML = '';
+    
+    if (prompts.length === 0) {
+        promptsTableBody.innerHTML = `
+            <tr class="empty-state-row">
+                <td colspan="5" class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-text">No prompts yet. Click "Add Prompt" to get started.</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    prompts.forEach((prompt, index) => {
+        const row = createPromptRow(prompt, index);
+        promptsTableBody.appendChild(row);
+    });
 }
 
 /**
- * Validate JSON structure
+ * Create a prompt row element
  */
-function validatePromptsJson(jsonText) {
-    try {
-        const data = JSON.parse(jsonText);
-        
-        if (!data.prompts || !Array.isArray(data.prompts)) {
-            return { valid: false, error: 'JSON must have a "prompts" array' };
+function createPromptRow(prompt, index) {
+    const row = document.createElement('tr');
+    row.dataset.index = index;
+    
+    const hasRawRequest = prompt.prompt && prompt.prompt.includes('[RAW_REQUEST]');
+    const validationBadge = hasRawRequest 
+        ? '<span class="validation-badge valid">✓ Valid</span>'
+        : '<span class="validation-badge invalid">✗ Missing [RAW_REQUEST]</span>';
+    
+    row.innerHTML = `
+        <td class="id-cell">${prompt.id}</td>
+        <td class="name-cell">
+            <input type="text" 
+                   class="prompt-name" 
+                   value="${escapeHtml(prompt.name || '')}" 
+                   placeholder="Prompt name">
+        </td>
+        <td class="description-cell">
+            <input type="text" 
+                   class="prompt-description" 
+                   value="${escapeHtml(prompt.description || '')}" 
+                   placeholder="Brief description">
+        </td>
+        <td class="instruction-cell">
+            <textarea class="prompt-instruction" 
+                      placeholder="Instruction with [RAW_REQUEST] placeholder">${escapeHtml(prompt.prompt || '')}</textarea>
+            ${validationBadge}
+        </td>
+        <td class="actions-cell">
+            <button class="delete-prompt-btn danger icon-only" data-index="${index}" title="Delete prompt">🗑️</button>
+        </td>
+    `;
+    
+    // Add event listeners
+    const nameInput = row.querySelector('.prompt-name');
+    const descInput = row.querySelector('.prompt-description');
+    const instructionTextarea = row.querySelector('.prompt-instruction');
+    const deleteBtn = row.querySelector('.delete-prompt-btn');
+    
+    nameInput.addEventListener('input', (e) => {
+        prompts[index].name = e.target.value;
+        updateValidationBadge(row);
+    });
+    
+    descInput.addEventListener('input', (e) => {
+        prompts[index].description = e.target.value;
+    });
+    
+    instructionTextarea.addEventListener('input', (e) => {
+        prompts[index].prompt = e.target.value;
+        updateValidationBadge(row);
+    });
+    
+    deleteBtn.addEventListener('click', () => {
+        deletePrompt(index);
+    });
+    
+    return row;
+}
+
+/**
+ * Update validation badge for a row
+ */
+function updateValidationBadge(row) {
+    const index = parseInt(row.dataset.index);
+    const prompt = prompts[index];
+    const hasRawRequest = prompt.prompt && prompt.prompt.includes('[RAW_REQUEST]');
+    
+    const badge = row.querySelector('.validation-badge');
+    if (badge) {
+        badge.className = `validation-badge ${hasRawRequest ? 'valid' : 'invalid'}`;
+        badge.textContent = hasRawRequest ? '✓ Valid' : '✗ Missing [RAW_REQUEST]';
+    }
+}
+
+/**
+ * Add a new prompt
+ */
+function addPrompt() {
+    const newPrompt = {
+        id: nextPromptId++,
+        name: '',
+        description: '',
+        prompt: ''
+    };
+    
+    prompts.push(newPrompt);
+    renderPromptsTable();
+    
+    // Focus on the name input of the new row
+    const rows = promptsTableBody.querySelectorAll('tr:not(.empty-state-row)');
+    if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        const nameInput = lastRow.querySelector('.prompt-name');
+        if (nameInput) {
+            nameInput.focus();
         }
-        
-        if (data.prompts.length === 0) {
-            return { valid: false, error: 'Prompts array cannot be empty' };
-        }
-        
-        const seenIds = new Set();
-        
-        for (let i = 0; i < data.prompts.length; i++) {
-            const prompt = data.prompts[i];
-            const index = i + 1;
-            
-            if (!prompt || typeof prompt !== 'object') {
-                return { valid: false, error: `Prompt at index ${index} must be an object` };
-            }
-            
-            if (!('id' in prompt) || prompt.id === null || prompt.id === undefined) {
-                return { valid: false, error: `Prompt at index ${index} is missing or has invalid 'id'` };
-            }
-            
-            if (seenIds.has(prompt.id)) {
-                return { valid: false, error: `Duplicate prompt ID: ${prompt.id}` };
-            }
-            seenIds.add(prompt.id);
-            
-            if (!prompt.name || typeof prompt.name !== 'string' || !prompt.name.trim()) {
-                return { valid: false, error: `Prompt at index ${index} is missing or has invalid 'name'` };
-            }
-            
-            if (!prompt.description || typeof prompt.description !== 'string' || !prompt.description.trim()) {
-                return { valid: false, error: `Prompt at index ${index} is missing or has invalid 'description'` };
-            }
-            
-            if (!prompt.prompt || typeof prompt.prompt !== 'string' || !prompt.prompt.trim()) {
-                return { valid: false, error: `Prompt at index ${index} is missing or has invalid 'prompt'` };
-            }
-            
-            if (!prompt.prompt.includes('[RAW_REQUEST]')) {
-                return { valid: false, error: `Prompt "${prompt.name}" is missing [RAW_REQUEST] placeholder` };
-            }
-        }
-        
-        return { valid: true, prompts: data.prompts };
-    } catch (error) {
-        return { valid: false, error: `Invalid JSON: ${error.message}` };
+    }
+}
+
+/**
+ * Delete a prompt
+ */
+function deletePrompt(index) {
+    if (confirm('Are you sure you want to delete this prompt?')) {
+        prompts.splice(index, 1);
+        renderPromptsTable();
     }
 }
 
@@ -125,9 +235,11 @@ async function loadDefaultPrompts() {
             throw new Error(`Failed to load: ${response.status}`);
         }
         const data = await response.json();
-        promptsJsonTextarea.value = JSON.stringify(data, null, 2);
-        updatePromptsInfo(data.prompts.length);
-        showStatus(promptsStatus, 'Default prompts loaded successfully', 'success');
+        prompts = data.prompts || [];
+        // Find max ID
+        nextPromptId = Math.max(...prompts.map(p => p.id || 0), -1) + 1;
+        renderPromptsTable();
+        showStatus(promptsStatus, `Loaded ${prompts.length} default prompt(s)`, 'success');
     } catch (error) {
         console.error('Error loading defaults:', error);
         showStatus(promptsStatus, 'Error loading default prompts', 'error');
@@ -135,47 +247,184 @@ async function loadDefaultPrompts() {
 }
 
 /**
- * Save configuration
+ * Validate prompts before saving
  */
-async function saveConfig() {
-    const apiKey = apiKeyInput.value.trim();
-    const jsonText = promptsJsonTextarea.value.trim();
+function validatePrompts() {
+    if (prompts.length === 0) {
+        return { valid: false, error: 'At least one prompt is required' };
+    }
     
-    // Validate API key
+    const seenIds = new Set();
+    
+    for (let i = 0; i < prompts.length; i++) {
+        const prompt = prompts[i];
+        const index = i + 1;
+        
+        if (!prompt.name || !prompt.name.trim()) {
+            return { valid: false, error: `Prompt #${index} is missing a name` };
+        }
+        
+        if (!prompt.description || !prompt.description.trim()) {
+            return { valid: false, error: `Prompt "${prompt.name}" is missing a description` };
+        }
+        
+        if (!prompt.prompt || !prompt.prompt.trim()) {
+            return { valid: false, error: `Prompt "${prompt.name}" is missing an instruction` };
+        }
+        
+        if (!prompt.prompt.includes('[RAW_REQUEST]')) {
+            return { valid: false, error: `Prompt "${prompt.name}" is missing [RAW_REQUEST] placeholder` };
+        }
+        
+        if (seenIds.has(prompt.id)) {
+            return { valid: false, error: `Duplicate prompt ID: ${prompt.id}` };
+        }
+        seenIds.add(prompt.id);
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Verify & Save Configuration (Atomic Operation)
+ * This is the main workflow: validate API Key + Model, then save both together
+ */
+async function verifyAndSave() {
+    const apiKey = apiKeyInput.value.trim();
+    const model = modelInput.value.trim() || "gpt-4o";
+    
+    // Basic validation
     if (!apiKey) {
-        showStatus(apiKeyStatus, 'Please enter an API key', 'error');
+        showStatus(configStatus, 'Please enter an API key', 'error');
         return;
     }
     
     if (!apiKey.startsWith('sk-')) {
-        showStatus(apiKeyStatus, 'API key should start with "sk-"', 'error');
+        showStatus(configStatus, 'API key should start with "sk-"', 'error');
         return;
     }
     
-    // Validate prompts JSON
-    const validation = validatePromptsJson(jsonText);
+    if (!model) {
+        showStatus(configStatus, 'Please enter a model name', 'error');
+        return;
+    }
+    
+    // Set loading state
+    verifyAndSaveBtn.disabled = true;
+    verifyAndSaveBtn.innerHTML = '<span class="spinner"></span> Verifying connection...';
+    showStatus(configStatus, 'Verifying connection to OpenAI API...', 'info');
+    
+    try {
+        // Step 1: Validate by making a test API call
+        const validateResponse = await chrome.runtime.sendMessage({
+            action: 'VALIDATE_MODEL',
+            testApiKey: apiKey,
+            testModel: model
+        });
+        
+        if (!validateResponse || !validateResponse.success) {
+            // Validation failed - DO NOT SAVE
+            verifyAndSaveBtn.disabled = false;
+            verifyAndSaveBtn.innerHTML = '✓ Verify & Save Configuration';
+            showStatus(configStatus, validateResponse?.error || 'Model validation failed', 'error');
+            return;
+        }
+        
+        // Step 2: Validation succeeded - Get current prompts to preserve them
+        const currentConfigResponse = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
+        const currentPrompts = currentConfigResponse?.data?.prompts || prompts;
+        
+        // Save configuration (preserve existing prompts if we don't have any in UI)
+        const promptsToSave = prompts.length > 0 ? prompts : currentPrompts;
+        
+        const saveResponse = await chrome.runtime.sendMessage({
+            action: 'SAVE_CONFIG',
+            apiKey: apiKey,
+            prompts: promptsToSave || [],
+            model: model
+        });
+        
+        if (saveResponse && saveResponse.success) {
+            // Success - update UI
+            // Reload config to get updated state
+            const updatedConfig = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
+            if (updatedConfig?.success) {
+                prompts = updatedConfig.data.prompts || prompts;
+                if (prompts.length > 0) {
+                    renderPromptsTable();
+                }
+                isConfigured = !!(updatedConfig.data.apiKey && updatedConfig.data.model && updatedConfig.data.prompts?.length > 0);
+            } else {
+                isConfigured = true; // At least API key and model are saved
+            }
+            updateStatusIndicator();
+            showStatus(configStatus, `✓ Configuration saved successfully! Model '${model}' is verified and ready.`, 'success');
+        } else {
+            showStatus(configStatus, saveResponse?.error || 'Failed to save configuration', 'error');
+        }
+    } catch (error) {
+        console.error('Error in verify & save:', error);
+        showStatus(configStatus, 'Error: ' + error.message, 'error');
+    } finally {
+        verifyAndSaveBtn.disabled = false;
+        verifyAndSaveBtn.innerHTML = '✓ Verify & Save Configuration';
+    }
+}
+
+/**
+ * Save prompts only
+ */
+async function savePrompts() {
+    // Sync prompts from table inputs
+    syncPromptsFromTable();
+    
+    const validation = validatePrompts();
     if (!validation.valid) {
         showStatus(promptsStatus, validation.error, 'error');
         return;
     }
     
     try {
+        // Get current config to preserve API key and model
+        const configResponse = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
+        const currentConfig = configResponse?.data || {};
+        
         const response = await chrome.runtime.sendMessage({
             action: 'SAVE_CONFIG',
-            apiKey: apiKey,
-            prompts: validation.prompts
+            apiKey: currentConfig.apiKey || apiKeyInput.value.trim(),
+            prompts: prompts,
+            model: currentConfig.model || modelInput.value.trim() || "gpt-4o"
         });
         
         if (response && response.success) {
-            showStatus(saveStatus, 'Configuration saved successfully!', 'success');
-            updatePromptsInfo(validation.prompts.length);
+            showStatus(promptsStatus, `Saved ${prompts.length} prompt(s) successfully!`, 'success');
+            isConfigured = !!(currentConfig.apiKey && currentConfig.model && prompts.length > 0);
+            updateStatusIndicator();
         } else {
-            showStatus(saveStatus, response?.error || 'Failed to save configuration', 'error');
+            showStatus(promptsStatus, response?.error || 'Failed to save prompts', 'error');
         }
     } catch (error) {
-        console.error('Error saving config:', error);
-        showStatus(saveStatus, 'Error saving configuration: ' + error.message, 'error');
+        console.error('Error saving prompts:', error);
+        showStatus(promptsStatus, 'Error saving prompts: ' + error.message, 'error');
     }
+}
+
+/**
+ * Sync prompts data from table inputs
+ */
+function syncPromptsFromTable() {
+    const rows = promptsTableBody.querySelectorAll('tr:not(.empty-state-row)');
+    rows.forEach((row, index) => {
+        if (prompts[index]) {
+            const nameInput = row.querySelector('.prompt-name');
+            const descInput = row.querySelector('.prompt-description');
+            const instructionTextarea = row.querySelector('.prompt-instruction');
+            
+            if (nameInput) prompts[index].name = nameInput.value.trim();
+            if (descInput) prompts[index].description = descInput.value.trim();
+            if (instructionTextarea) prompts[index].prompt = instructionTextarea.value.trim();
+        }
+    });
 }
 
 /**
@@ -188,12 +437,20 @@ async function clearConfig() {
     
     try {
         apiKeyInput.value = '';
-        promptsJsonTextarea.value = '';
-        promptsInfo.textContent = '';
+        modelInput.value = 'gpt-4o';
+        prompts = [];
+        nextPromptId = 0;
+        renderPromptsTable();
         
-        // Clear storage via background script
-        await chrome.runtime.sendMessage({ action: 'SAVE_CONFIG', apiKey: '', prompts: [] });
+        await chrome.runtime.sendMessage({ 
+            action: 'SAVE_CONFIG', 
+            apiKey: '', 
+            prompts: [],
+            model: 'gpt-4o'
+        });
         
+        isConfigured = false;
+        updateStatusIndicator();
         showStatus(saveStatus, 'Configuration cleared', 'info');
     } catch (error) {
         console.error('Error clearing config:', error);
@@ -201,54 +458,20 @@ async function clearConfig() {
     }
 }
 
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Event Listeners
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        try {
-            const text = event.target.result;
-            const validation = validatePromptsJson(text);
-            
-            if (validation.valid) {
-                promptsJsonTextarea.value = JSON.stringify({ prompts: validation.prompts }, null, 2);
-                updatePromptsInfo(validation.prompts.length);
-                showStatus(promptsStatus, 'File loaded successfully', 'success');
-            } else {
-                showStatus(promptsStatus, validation.error, 'error');
-            }
-        } catch (error) {
-            showStatus(promptsStatus, 'Error reading file: ' + error.message, 'error');
-        }
-    };
-    reader.readAsText(file);
-    
-    // Reset file input
-    e.target.value = '';
-});
-
+verifyAndSaveBtn.addEventListener('click', verifyAndSave);
+addPromptBtn.addEventListener('click', addPrompt);
 loadDefaultsBtn.addEventListener('click', loadDefaultPrompts);
-
-validateJsonBtn.addEventListener('click', () => {
-    const jsonText = promptsJsonTextarea.value.trim();
-    if (!jsonText) {
-        showStatus(promptsStatus, 'Please enter JSON to validate', 'error');
-        return;
-    }
-    
-    const validation = validatePromptsJson(jsonText);
-    if (validation.valid) {
-        showStatus(promptsStatus, `✓ Valid JSON with ${validation.prompts.length} prompt(s)`, 'success');
-        updatePromptsInfo(validation.prompts.length);
-    } else {
-        showStatus(promptsStatus, validation.error, 'error');
-    }
-});
-
-saveBtn.addEventListener('click', saveConfig);
-
+savePromptsBtn.addEventListener('click', savePrompts);
 clearBtn.addEventListener('click', clearConfig);
 
 // Load configuration on page load

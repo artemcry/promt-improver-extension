@@ -19,7 +19,7 @@ async function getSwitcherInstance() {
         const config = await StorageManager.getConfigWithDefaults();
         
         // Check if we need to recreate the instance
-        const currentHash = JSON.stringify({ apiKey: config.apiKey, promptsCount: config.prompts?.length });
+        const currentHash = JSON.stringify({ apiKey: config.apiKey, promptsCount: config.prompts?.length, model: config.model });
         if (switcherInstance && lastConfigHash === currentHash) {
             return switcherInstance;
         }
@@ -33,8 +33,8 @@ async function getSwitcherInstance() {
             throw new Error('No prompts available. Please configure prompts in extension settings.');
         }
         
-        // Create new instance
-        switcherInstance = new PromptSwitcher(config.apiKey, config.prompts);
+        // Create new instance with model
+        switcherInstance = new PromptSwitcher(config.apiKey, config.prompts, config.model || "gpt-4o");
         lastConfigHash = currentHash;
         
         return switcherInstance;
@@ -121,14 +121,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 case 'SAVE_CONFIG':
                     // Save configuration
-                    const { apiKey, prompts } = request;
-                    await StorageManager.saveConfig(apiKey, prompts);
+                    const { apiKey, prompts, model } = request;
+                    await StorageManager.saveConfig(apiKey, prompts, model || "gpt-4o");
                     // Invalidate cached instance
                     switcherInstance = null;
                     lastConfigHash = null;
                     sendResponse({
                         success: true
                     });
+                    break;
+
+                case 'VALIDATE_MODEL':
+                    // Validate model by making a test API call
+                    const { testApiKey, testModel } = request;
+                    if (!testApiKey || !testModel) {
+                        sendResponse({
+                            success: false,
+                            error: 'API key and model are required'
+                        });
+                        return;
+                    }
+                    
+                    try {
+                        // Make a minimal test call to OpenAI
+                        const testResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${testApiKey}`
+                            },
+                            body: JSON.stringify({
+                                model: testModel,
+                                messages: [
+                                    { role: "user", content: "test" }
+                                ],
+                                max_completion_tokens: 5
+                            })
+                        });
+                        
+                        if (!testResponse.ok) {
+                            const errorData = await testResponse.json().catch(() => ({}));
+                            let errorMessage = `API Error: ${testResponse.status}`;
+                            
+                            if (testResponse.status === 404) {
+                                errorMessage = `Model '${testModel}' does not exist or is not available`;
+                            } else if (testResponse.status === 401) {
+                                errorMessage = 'Invalid API key';
+                            } else if (errorData.error?.message) {
+                                errorMessage = errorData.error.message;
+                            }
+                            
+                            sendResponse({
+                                success: false,
+                                error: errorMessage
+                            });
+                            return;
+                        }
+                        
+                        sendResponse({
+                            success: true,
+                            message: `Model '${testModel}' is valid and accessible`
+                        });
+                    } catch (error) {
+                        sendResponse({
+                            success: false,
+                            error: `Network error: ${error.message}`
+                        });
+                    }
                     break;
 
                 default:
@@ -152,7 +211,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Listen for storage changes to invalidate cache
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && (changes.apiKey || changes.prompts)) {
+    if (areaName === 'local' && (changes.apiKey || changes.prompts || changes.model)) {
         switcherInstance = null;
         lastConfigHash = null;
     }

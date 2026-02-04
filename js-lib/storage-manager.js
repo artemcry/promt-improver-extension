@@ -4,17 +4,19 @@
 
 class StorageManager {
     /**
-     * Save configuration (API key and prompts) to chrome.storage
+     * Save configuration (API key, prompts, and model) to chrome.storage
      * @param {string} apiKey - OpenAI API key
      * @param {Array} promptsArray - Array of prompt objects
+     * @param {string} model - OpenAI model name (default: "gpt-4o")
      * @returns {Promise<void>}
      */
-    static async saveConfig(apiKey, promptsArray) {
+    static async saveConfig(apiKey, promptsArray, model = "gpt-4o") {
         return new Promise((resolve, reject) => {
             chrome.storage.local.set(
                 {
                     apiKey: apiKey,
-                    prompts: promptsArray
+                    prompts: promptsArray,
+                    model: model
                 },
                 () => {
                     if (chrome.runtime.lastError) {
@@ -29,17 +31,18 @@ class StorageManager {
 
     /**
      * Get configuration from chrome.storage
-     * @returns {Promise<{apiKey: string|null, prompts: Array|null}>}
+     * @returns {Promise<{apiKey: string|null, prompts: Array|null, model: string}>}
      */
     static async getConfig() {
         return new Promise((resolve, reject) => {
-            chrome.storage.local.get(['apiKey', 'prompts'], (result) => {
+            chrome.storage.local.get(['apiKey', 'prompts', 'model'], (result) => {
                 if (chrome.runtime.lastError) {
                     reject(new Error(chrome.runtime.lastError.message));
                 } else {
                     resolve({
                         apiKey: result.apiKey || null,
-                        prompts: result.prompts || null
+                        prompts: result.prompts || null,
+                        model: result.model || "gpt-4o"
                     });
                 }
             });
@@ -52,7 +55,7 @@ class StorageManager {
      */
     static async clearConfig() {
         return new Promise((resolve, reject) => {
-            chrome.storage.local.remove(['apiKey', 'prompts'], () => {
+            chrome.storage.local.remove(['apiKey', 'prompts', 'model'], () => {
                 if (chrome.runtime.lastError) {
                     reject(new Error(chrome.runtime.lastError.message));
                 } else {
@@ -83,7 +86,7 @@ class StorageManager {
     /**
      * Get configuration with fallback to defaults
      * If no prompts are found in storage, loads default prompts
-     * @returns {Promise<{apiKey: string|null, prompts: Array}>}
+     * @returns {Promise<{apiKey: string|null, prompts: Array, model: string}>}
      */
     static async getConfigWithDefaults() {
         const config = await this.getConfig();
@@ -93,10 +96,11 @@ class StorageManager {
             const defaultPrompts = await this.loadDefaultPrompts();
             // Save defaults to storage for future use
             if (defaultPrompts.length > 0) {
-                await this.saveConfig(config.apiKey, defaultPrompts);
+                await this.saveConfig(config.apiKey, defaultPrompts, config.model);
                 return {
                     apiKey: config.apiKey,
-                    prompts: defaultPrompts
+                    prompts: defaultPrompts,
+                    model: config.model
                 };
             }
         }
