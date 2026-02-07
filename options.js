@@ -358,17 +358,14 @@ function validatePrompts() {
 }
 
 /**
- * Validate all configuration (API key, model, prompts)
+ * Validate all configuration (API key optional; model, prompts)
  */
 function validateAllConfig() {
     const errors = [];
     const apiKey = apiKeyInput.value.trim();
     const model = modelInput.value.trim();
     
-    // Validate API key
-    if (!apiKey) {
-        errors.push('API key is required');
-    } else if (!apiKey.startsWith('sk-')) {
+    if (apiKey && !apiKey.startsWith('sk-')) {
         errors.push('API key should start with "sk-"');
     }
     
@@ -425,57 +422,54 @@ async function verifyAndSave() {
     const apiKey = apiKeyInput.value.trim();
     const model = modelInput.value.trim() || "gpt-4o";
     
-    // Validate all configuration
     const validation = validateAllConfig();
     if (!validation.valid) {
         showValidationErrors(validation.errors);
         return;
     }
-    
-    // Set loading state
+
     verifyAndSaveBtn.disabled = true;
     verifyAndSaveBtn.innerHTML = '<span class="spinner"></span> Verifying & Saving...';
-    showStatus(configStatus, 'Verifying connection to OpenAI API...', 'info');
-    
+
     try {
-        // Step 1: Validate by making a test API call
-        const validateResponse = await chrome.runtime.sendMessage({
-            action: 'VALIDATE_MODEL',
-            testApiKey: apiKey,
-            testModel: model
-        });
-        
-        if (!validateResponse || !validateResponse.success) {
-            // Validation failed - DO NOT SAVE
-            verifyAndSaveBtn.disabled = false;
-            verifyAndSaveBtn.innerHTML = '💾 Save All Configuration';
-            showStatus(configStatus, validateResponse?.error || 'Model validation failed', 'error');
-            return;
+        if (apiKey) {
+            showStatus(configStatus, 'Verifying connection to OpenAI API...', 'info');
+            const validateResponse = await chrome.runtime.sendMessage({
+                action: 'VALIDATE_MODEL',
+                testApiKey: apiKey,
+                testModel: model
+            });
+            if (!validateResponse || !validateResponse.success) {
+                verifyAndSaveBtn.disabled = false;
+                verifyAndSaveBtn.innerHTML = '💾 Save All Configuration';
+                showStatus(configStatus, validateResponse?.error || 'Model validation failed', 'error');
+                return;
+            }
+        } else {
+            showStatus(configStatus, 'Saving configuration (manual mode only until API key is set)...', 'info');
         }
-        
-        // Step 2: Validation succeeded - Save everything
+
         const saveResponse = await chrome.runtime.sendMessage({
             action: 'SAVE_CONFIG',
             apiKey: apiKey,
             prompts: prompts,
             model: model
         });
-        
+
         if (saveResponse && saveResponse.success) {
-            // Update saved state
             savedApiKey = apiKey;
             savedModel = model;
-            savedPrompts = JSON.parse(JSON.stringify(prompts)); // Deep copy
+            savedPrompts = JSON.parse(JSON.stringify(prompts));
             hasUnsavedChanges = false;
             updateUnsavedChangesBanner();
-            
-            // Clear validation errors
             clearValidationErrors();
-            
-            // Update UI
-            isConfigured = !!(apiKey && model && prompts.length > 0);
+            isConfigured = !!(model && prompts.length > 0);
             updateStatusIndicator();
-            showStatus(configStatus, `✓ All configuration saved successfully! Model '${model}' is verified and ready.`, 'success');
+            if (apiKey) {
+                showStatus(configStatus, `✓ Configuration saved. Model '${model}' is verified and ready.`, 'success');
+            } else {
+                showStatus(configStatus, '✓ Configuration saved. Manual mode is available. Set an API key to use auto mode.', 'success');
+            }
         } else {
             const errorMsg = saveResponse?.error || 'Failed to save configuration';
             showValidationErrors([errorMsg]);

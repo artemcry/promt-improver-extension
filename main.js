@@ -80,9 +80,7 @@ document.addEventListener('keydown', async function(e) {
         if (!isInput) return;
 
         e.preventDefault();
-        const originalText = activeEl.value || activeEl.innerText;
-        
-        if (!originalText || originalText.trim() === "") return;
+        const originalText = (activeEl.value || activeEl.innerText || '').trim();
 
         state.isProcessing = true;
         showInputLoading(activeEl);

@@ -10,38 +10,48 @@ import { StorageManager } from './js-lib/storage-manager.js';
 let switcherInstance = null;
 let lastConfigHash = null;
 
+const NO_API_KEY_MESSAGE = 'Для авто-режиму потрібен API ключ. Вкажіть його в налаштуваннях розширення.';
+
 /**
- * Get or create PromptSwitcher instance
- * @returns {Promise<PromptSwitcher>}
+ * Get or create PromptSwitcher instance. Returns null when API key is not set (extension works without key in manual mode).
+ * @returns {Promise<PromptSwitcher|null>}
  */
 async function getSwitcherInstance() {
+    const config = await StorageManager.getConfigWithDefaults();
+
+    if (!config.apiKey || !config.apiKey.trim()) {
+        return null;
+    }
+
     try {
-        const config = await StorageManager.getConfigWithDefaults();
-        
-        // Check if we need to recreate the instance
         const currentHash = JSON.stringify({ apiKey: config.apiKey, promptsCount: config.prompts?.length, model: config.model });
         if (switcherInstance && lastConfigHash === currentHash) {
             return switcherInstance;
         }
-        
-        // Validate configuration
-        if (!config.apiKey) {
-            throw new Error('API key not configured. Please set your OpenAI API key in extension settings.');
-        }
-        
+
         if (!config.prompts || config.prompts.length === 0) {
             throw new Error('No prompts available. Please configure prompts in extension settings.');
         }
-        
-        // Create new instance with model
+
         switcherInstance = new PromptSwitcher(config.apiKey, config.prompts, config.model || "gpt-4o");
         lastConfigHash = currentHash;
-        
         return switcherInstance;
     } catch (error) {
         console.error('Error creating PromptSwitcher instance:', error);
         throw error;
     }
+}
+
+/**
+ * Get agents list from config (used when API key is not set)
+ * @returns {Promise<Array<{id, name, description}>>}
+ */
+async function getAgentsFromConfig() {
+    const config = await StorageManager.getConfigWithDefaults();
+    if (!config.prompts || config.prompts.length === 0) {
+        throw new Error('No prompts available. Please configure prompts in extension settings.');
+    }
+    return config.prompts.map(p => ({ id: p.id, name: p.name, description: p.description }));
 }
 
 /**
@@ -52,63 +62,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
         try {
             switch (request.action) {
-                case 'GET_AGENTS':
-                    // Get list of available agents
+                case 'GET_AGENTS': {
                     const switcher = await getSwitcherInstance();
-                    const agents = switcher.getAgents();
-                    // Return only metadata (id, name, description) for UI
-                    sendResponse({
-                        success: true,
-                        data: agents.map(a => ({
-                            id: a.id,
-                            name: a.name,
-                            description: a.description
-                        }))
-                    });
+                    const agents = switcher
+                        ? switcher.getAgents().map(a => ({ id: a.id, name: a.name, description: a.description }))
+                        : await getAgentsFromConfig();
+                    sendResponse({ success: true, data: agents });
                     break;
+                }
 
-                case 'OPTIMIZE':
-                    // Optimize/transform user text using selected or auto agent
+                case 'OPTIMIZE': {
                     const { text, agent_id } = request;
-                    
-                    if (!text || !text.trim()) {
-                        sendResponse({
-                            success: false,
-                            error: 'Empty text provided'
-                        });
-                        return;
-                    }
-                    
+                    const normalizedText = (text != null ? String(text) : '').trim();
                     const switcherForOptimize = await getSwitcherInstance();
-                    
+
                     if (agent_id !== null && agent_id !== undefined) {
-                        // Manual selection: use specific agent
-                        const agents = switcherForOptimize.getAgents();
-                        const targetAgent = agents.find(a => a.id === agent_id);
-                        
-                        if (!targetAgent) {
-                            sendResponse({
-                                success: false,
-                                error: `Agent with ID ${agent_id} not found`
-                            });
+                        // Manual selection: works without API key
+                        const config = await StorageManager.getConfigWithDefaults();
+                        if (!config.prompts?.length) {
+                            sendResponse({ success: false, error: 'No prompts available. Please configure prompts in extension settings.' });
                             return;
                         }
-                        
-                        // Replace [RAW_REQUEST] in template
-                        const finalPrompt = targetAgent.promptTemplate.replace('[RAW_REQUEST]', text);
-                        sendResponse({
-                            success: true,
-                            data: { optimized_text: finalPrompt }
-                        });
+                        const prompt = config.prompts.find(p => p.id === agent_id);
+                        if (!prompt) {
+                            sendResponse({ success: false, error: `Agent with ID ${agent_id} not found` });
+                            return;
+                        }
+                        const finalPrompt = (prompt.prompt || '').replace('[RAW_REQUEST]', normalizedText);
+                        sendResponse({ success: true, data: { optimized_text: finalPrompt } });
                     } else {
-                        // Auto mode: use AI routing
-                        const agent = await switcherForOptimize.getAgent(text);
-                        sendResponse({
-                            success: true,
-                            data: { optimized_text: agent.finalPrompt }
-                        });
+                        // Auto mode: requires API key
+                        if (!switcherForOptimize) {
+                            sendResponse({ success: false, error: NO_API_KEY_MESSAGE });
+                            return;
+                        }
+                        if (normalizedText === '') {
+                            sendResponse({ success: true, data: {} });
+                            return;
+                        }
+                        const agent = await switcherForOptimize.getAgent(normalizedText);
+                        sendResponse({ success: true, data: { optimized_text: agent.finalPrompt } });
                     }
                     break;
+                }
 
                 case 'GET_CONFIG':
                     // Get current configuration
